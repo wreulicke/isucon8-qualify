@@ -645,11 +645,15 @@ func getEventByAdmin() func(c echo.Context) error {
 		if err != nil {
 			return resError(c, "not_found", 404)
 		}
-		event, err := getEvent(eventID, -1)
+		eventById, err := getEventById(eventID)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				return resError(c, "not_found", 404)
 			}
+			return err
+		}
+		event, err := fillsEvent(eventById, -1)
+		if err != nil {
 			return err
 		}
 		return c.JSON(200, event)
