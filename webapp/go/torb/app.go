@@ -548,7 +548,11 @@ func reportEventSales() func(c echo.Context) error {
 			return resError(c, "not_found", 404)
 		}
 
-		event, err := getEvent(eventID, -1)
+		eventById, err := getEventById(eventID)
+		if err != nil {
+			return err
+		}
+		event, err := fillsEvent(eventById, -1)
 		if err != nil {
 			return err
 		}
@@ -680,7 +684,11 @@ func createEvent() func(c echo.Context) error {
 			return err
 		}
 
-		event, err := getEvent(eventID, -1)
+		eventById, err := getEventById(eventID)
+		if err != nil {
+			return err
+		}
+		event, err := fillsEvent(eventById, -1)
 		if err != nil {
 			return err
 		}
