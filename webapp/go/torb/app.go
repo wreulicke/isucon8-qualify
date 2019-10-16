@@ -9,6 +9,8 @@ import (
 	"html/template"
 	"io"
 	"log"
+	"net/http"
+	"net/http/pprof"
 	"os"
 	"os/exec"
 	"sort"
@@ -176,6 +178,12 @@ func getLoginUser(c echo.Context) (*User, error) {
 	return &user, err
 }
 
+func getUserByID(userID int64) (*User, error) {
+	var user User
+	err := db.QueryRow("SELECT id, nickname FROM users WHERE id = ?", userID).Scan(&user.ID, &user.Nickname)
+	return &user, err
+}
+
 func getLoginAdministrator(c echo.Context) (*Administrator, error) {
 	administratorID := sessAdministratorID(c)
 	if administratorID == 0 {
@@ -227,58 +235,103 @@ func getEvents(all bool) ([]*Event, error) {
 		}
 		defer rows.Close()
 
-		v.Sheets = map[string]*Sheets{
-			"S": &Sheets{
-				Price: v.Price + 5000,
-				Total: 50,
-				Remains: 50,
-			},
-			"A": &Sheets{
-				Price: v.Price + 3000,
-				Total: 150,
-				Remains: 150,
-			},
-			"B": &Sheets{
-				Price: v.Price + 1000,
-				Total: 300,
-				Remains: 300,
-			},
-			"C": &Sheets{
-				Price: v.Price,
-				Total: 500,
-				Remains: 500,
-			},
-		}
-		for rows.Next() {
-			var reservedCount int
-			var rank string
-			if err := rows.Scan(&reservedCount, &rank); err != nil {
-				return nil, err
-			}
-			v.Remains = v.Remains - reservedCount
-			v.Sheets[rank].Remains = v.Sheets[rank].Remains - reservedCount
-		}
-	}
-	return events, nil
-}
 
-func getEvent(eventID, loginUserID int64) (*Event, error) {
+func getEventById(eventID int64) (*Event, error) {
 	var event Event
 	if err := db.QueryRow("SELECT * FROM events WHERE id = ?", eventID).Scan(&event.ID, &event.Title, &event.PublicFg, &event.ClosedFg, &event.Price); err != nil {
 		return nil, err
 	}
-	event.Sheets = map[string]*Sheets{
-		"S": &Sheets{},
-		"A": &Sheets{},
-		"B": &Sheets{},
-		"C": &Sheets{},
+	return &event, nil
+}
+
+func getSheets(price int64) map[string]*Sheets {
+	s := map[string]*Sheets{
+			"S": &Sheets{
+			Price:   price + 5000,
+			Total:   50,
+				Remains: 50,
+			},
+			"A": &Sheets{
+			Price:   price + 3000,
+			Total:   150,
+				Remains: 150,
+			},
+			"B": &Sheets{
+			Price:   price + 1000,
+			Total:   300,
+				Remains: 300,
+			},
+			"C": &Sheets{
+			Price:   price,
+			Total:   500,
+				Remains: 500,
+			},
+		}
+
+	var i int64
+	for i = 1; i <= 1000; i++ {
+		sheet := getSheet(i)
+		s[sheet.Rank].Detail = append(s[sheet.Rank].Detail, sheet)
+			}
+	return s
+		}
+func getSheet(id int64) *Sheet {
+	if id <= 50 {
+		return &Sheet{
+			ID:   id,
+			Rank: "S",
+			Num:  id,
+	}
+	} else if id <= 200 {
+		return &Sheet{
+			ID:   id,
+			Rank: "A",
+			Num:  id - 50,
+}
+	} else if id <= 500 {
+		return &Sheet{
+			ID:   id,
+			Rank: "B",
+			Num:  id - 200,
+		}
+	} else {
+		return &Sheet{
+			ID:   id,
+			Rank: "C",
+			Num:  id - 500,
+		}
+	}
+}
+
+func getSheetByNumAndRank(num int64, rank string) *Sheet {
+	sheet := &Sheet{
+		Rank: rank,
+	}
+	if rank == "S" {
+		sheet.ID = num
+		sheet.Num = num
+	} else if rank == "A" {
+		sheet.ID = num + 50
+		sheet.Num = num
+	} else if rank == "B" {
+		sheet.ID = num + 200
+		sheet.Num = num
+	} else if rank == "C" {
+		sheet.ID = num + 500
+		sheet.Num = num
+	}
+	return sheet
 	}
 
-	rows, err := db.Query("SELECT * FROM sheets ORDER BY `rank`, num")
+func fillsEvent(event *Event, loginUserID int64) (*Event, error) {
+	event.Sheets = getSheets(event.Price)
+	event.Total = 1000
+	event.Remains = 1000
+
+	rows, err := db.Query("SELECT * FROM reservations WHERE reservations.event_id = ? AND reservations.canceled_at IS NULL GROUP BY event_id, sheet_id HAVING reserved_at = MIN(reserved_at)", event.ID)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
 	for rows.Next() {
 		var sheet Sheet
@@ -336,9 +389,7 @@ func fillinAdministrator(next echo.HandlerFunc) echo.HandlerFunc {
 }
 
 func validateRank(rank string) bool {
-	var count int
-	db.QueryRow("SELECT COUNT(*) FROM sheets WHERE `rank` = ?", rank).Scan(&count)
-	return count > 0
+	return rank == "C" || rank == "B" || rank == "A" || rank == "S"
 }
 
 type Renderer struct {
@@ -414,7 +465,7 @@ func main() {
 		templates: template.Must(template.New("").Delims("[[", "]]").Funcs(funcs).ParseGlob("views/*.tmpl")),
 	}
 	e.Use(session.Middleware(sessions.NewCookieStore([]byte("secret"))))
-	e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{Output: os.Stderr}))
+
 	e.Static("/", "public")
 	e.GET("/", index(), fillinUser)
 	e.GET("/initialize", initialize())
@@ -424,19 +475,36 @@ func main() {
 	e.POST("/api/actions/logout", m("/api/actions/logout", logout()), loginRequired)
 	e.GET("/api/events", m("/api/events", getEventsHandler()))
 	e.GET("/api/events/:id", m("/api/events/:id", getEventHandler()))
-	e.POST("/api/events/:id/actions/reserve", reserve(), loginRequired)
-	e.DELETE("/api/events/:id/sheets/:rank/:num/reservation", deleteReservation(), loginRequired)
-	e.GET("/admin/", indexAdmin(), fillinAdministrator)
-	e.POST("/admin/api/actions/login", loginAdmin())
-	e.POST("/admin/api/actions/logout", logoutAdmin(), adminLoginRequired)
-	e.GET("/admin/api/events", getAdmingEvents(), adminLoginRequired)
-	e.POST("/admin/api/events", createEvent(), adminLoginRequired)
-	e.GET("/admin/api/events/:id", getEventByAdmin(), adminLoginRequired)
-	e.POST("/admin/api/events/:id/actions/edit", updateEvent(), adminLoginRequired)
-	e.GET("/admin/api/reports/events/:id/sales", reportEventSales(), adminLoginRequired)
-	e.GET("/admin/api/reports/sales", reportSales(), adminLoginRequired)
+	e.POST("/api/events/:id/actions/reserve", m("/api/events/:id/actions/reserve", reserve()), loginRequired)
+	e.DELETE("/api/events/:id/sheets/:rank/:num/reservation", m("/api/events/:id/sheets/:rank/:num/reservation", cancelReservation()), loginRequired)
+	e.GET("/admin/", m("/admin/", indexAdmin()), fillinAdministrator)
+	e.POST("/admin/api/actions/login", m("/admin/api/actions/login", loginAdmin()))
+	e.POST("/admin/api/actions/logout", m("/admin/api/actions/logout", logoutAdmin()), adminLoginRequired)
+	e.GET("/admin/api/events", m("/admin/api/events", getAdmingEvents()), adminLoginRequired)
+	e.POST("/admin/api/events", m("/admin/api/events", createEvent()), adminLoginRequired)
+	e.GET("/admin/api/events/:id", m("/admin/api/events/:id", getEventByAdmin()), adminLoginRequired)
+	e.POST("/admin/api/events/:id/actions/edit", m("/admin/api/events/:id/actions/edit", updateEvent()), adminLoginRequired)
+	e.GET("/admin/api/reports/events/:id/sales", m("/admin/api/reports/events/:id/sales", reportEventSales()), adminLoginRequired)
+	e.GET("/admin/api/reports/sales", m("/admin/api/reports/sales", reportSales()), adminLoginRequired)
+
+	//applyPprof(e)
+	// applyLogger()
 
 	e.Start(":8080")
+}
+
+func applyLogger(e *echo.Echo) {
+	e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
+		Output: os.Stderr}))
+}
+
+func applyPprof(e *echo.Echo) {
+	pprofGroup := e.Group("/debug/pprof")
+	pprofGroup.Any("/cmdline", echo.WrapHandler(http.HandlerFunc(pprof.Cmdline)))
+	pprofGroup.Any("/profile", echo.WrapHandler(http.HandlerFunc(pprof.Profile)))
+	pprofGroup.Any("/symbol", echo.WrapHandler(http.HandlerFunc(pprof.Symbol)))
+	pprofGroup.Any("/trace", echo.WrapHandler(http.HandlerFunc(pprof.Trace)))
+	pprofGroup.Any("/*", echo.WrapHandler(http.HandlerFunc(pprof.Index)))
 }
 
 func reportSales() func(c echo.Context) error {
@@ -688,7 +756,7 @@ func indexAdmin() func(c echo.Context) error {
 	}
 }
 
-func deleteReservation() func(c echo.Context) error {
+func cancelReservation() func(c echo.Context) error {
 	return func(c echo.Context) error {
 		eventID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 		if err != nil {
@@ -702,13 +770,13 @@ func deleteReservation() func(c echo.Context) error {
 			return err
 		}
 
-		event, err := getEvent(eventID, user.ID)
+		eventById, err := getEventById(eventID)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				return resError(c, "invalid_event", 404)
 			}
 			return err
-		} else if !event.PublicFg {
+		} else if !eventById.PublicFg {
 			return resError(c, "invalid_event", 404)
 		}
 
@@ -716,13 +784,21 @@ func deleteReservation() func(c echo.Context) error {
 			return resError(c, "invalid_rank", 404)
 		}
 
-		var sheet Sheet
-		if err := db.QueryRow("SELECT * FROM sheets WHERE `rank` = ? AND num = ?", rank, num).Scan(&sheet.ID, &sheet.Rank, &sheet.Num, &sheet.Price); err != nil {
-			if err == sql.ErrNoRows {
+		i, err := strconv.Atoi(num)
+		if err != nil {
 				return resError(c, "invalid_sheet", 404)
 			}
-			return err
+		if rank == "S" && i > 50 {
+			return resError(c, "invalid_sheet", 404)
+		} else if rank == "A" && i > 150 {
+			return resError(c, "invalid_sheet", 404)
+		} else if rank == "B" && i > 300 {
+			return resError(c, "invalid_sheet", 404)
+		} else if rank == "C" && i > 500 {
+			return resError(c, "invalid_sheet", 404)
 		}
+
+		sheet := getSheetByNumAndRank(int64(i), rank)
 
 		tx, err := db.Begin()
 		if err != nil {
@@ -771,11 +847,15 @@ func reserve() func(c echo.Context) error {
 			return err
 		}
 
-		event, err := getEvent(eventID, user.ID)
+		eventById, err := getEventById(eventID)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				return resError(c, "invalid_event", 404)
 			}
+			return err
+		}
+		event, err := fillsEvent(eventById, user.ID)
+		if err != nil {
 			return err
 		} else if !event.PublicFg {
 			return resError(c, "invalid_event", 404)
@@ -840,14 +920,19 @@ func getEventHandler() func(c echo.Context) error {
 			loginUserID = user.ID
 		}
 
-		event, err := getEvent(eventID, loginUserID)
+		eventById, err := getEventById(eventID)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				return resError(c, "not_found", 404)
 			}
 			return err
-		} else if !event.PublicFg {
+		} else if !eventById.PublicFg {
 			return resError(c, "not_found", 404)
+		}
+
+		event, err := fillsEvent(eventById, loginUserID)
+		if err != nil {
+			return err
 		}
 		return c.JSON(200, sanitizeEvent(event))
 	}
@@ -908,12 +993,7 @@ func login() func(c echo.Context) error {
 
 func getUser() func(c echo.Context) error {
 	return func(c echo.Context) error {
-		var user User
-		if err := db.QueryRow("SELECT id, nickname FROM users WHERE id = ?", c.Param("id")).Scan(&user.ID, &user.Nickname); err != nil {
-			return err
-		}
-
-		loginUser, err := getLoginUser(c)
+		user, err := getLoginUser(c)
 		if err != nil {
 			return err
 		}
@@ -935,16 +1015,18 @@ func getUser() func(c echo.Context) error {
 				return err
 			}
 
-			event, err := getEvent(reservation.EventID, -1)
+			eventById, err := getEventById(reservation.EventID)
 			if err != nil {
 				return err
 			}
-			price := event.Sheets[sheet.Rank].Price
-			event.Sheets = nil
-			event.Total = 0
-			event.Remains = 0
+			eventById.Sheets = getSheets(eventById.Price)
+			sheet := getSheet(reservation.SheetID)
+			price := eventById.Sheets[sheet.Rank].Price
+			eventById.Sheets = nil
+			eventById.Total = 0
+			eventById.Remains = 0
 
-			reservation.Event = event
+			reservation.Event = eventById
 			reservation.SheetRank = sheet.Rank
 			reservation.SheetNum = sheet.Num
 			reservation.Price = price
@@ -975,7 +1057,11 @@ func getUser() func(c echo.Context) error {
 			if err := rows.Scan(&eventID); err != nil {
 				return err
 			}
-			event, err := getEvent(eventID, -1)
+			eventById, err := getEventById(eventID)
+			if err != nil {
+				return err
+			}
+			event, err := fillsEvent(eventById, -1)
 			if err != nil {
 				return err
 			}
