@@ -195,25 +195,14 @@ func getLoginAdministrator(c echo.Context) (*Administrator, error) {
 }
 
 func getEvents(all bool) ([]*Event, error) {
-	tx, err := db.Begin()
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Commit()
-
 	var rows *sql.Rows
+	var err error
 	if !all {
-		rows, err = tx.Query("SELECT * FROM events WHERE public_fg = ? ORDER BY id ASC", 1)
+		rows, err = db.Query("SELECT * FROM events WHERE public_fg = ? ORDER BY id ASC", 1)
 	} else {
-		rows, err = tx.Query("SELECT * FROM events ORDER BY id ASC")
+		rows, err = db.Query("SELECT * FROM events ORDER BY id ASC")
 	}
 
-	// SELECT * FROM events WHERE publicFg == 1 ORDER BY id ASC
-
-	// SELECT * FROM public_events ORDER BY id ASC
-	// SELECT * FROM closed_events ORDER BY id ASC
-
-	// SELECT * FROM events WHERE ORDER BY id ASC
 	if err != nil {
 		return nil, err
 	}
