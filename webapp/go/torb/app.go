@@ -226,8 +226,8 @@ func getEvents(all bool) ([]*Event, error) {
 			return nil, err
 		}
 		if all || event.PublicFg {
-		events = append(events, &event)
-	}
+			events = append(events, &event)
+		}
 
 	}
 
@@ -239,10 +239,10 @@ func getEvents(all bool) ([]*Event, error) {
 	r := map[int64]map[string]int{}
 	rows, err = db.Query("SELECT count(*), reservations.event_id, sheets.`rank` FROM reservations "+
 		"INNER JOIN sheets on reservations.sheet_id = sheets.id WHERE reservations.event_id in (?"+strings.Repeat(",?", len(ids)-1)+") AND reservations.canceled_at IS NULL group by reservations.event_id, sheets.rank;", ids...)
-		if err != nil {
-			return nil, err
-		}
-		defer rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
 
 	for rows.Next() {
 		var reservedCount int
@@ -281,48 +281,48 @@ func getEventById(eventID int64) (*Event, error) {
 
 func getSheets(price int64) map[string]*Sheets {
 	s := map[string]*Sheets{
-			"S": &Sheets{
+		"S": &Sheets{
 			Price:   price + 5000,
 			Total:   50,
-				Remains: 50,
-			},
-			"A": &Sheets{
+			Remains: 50,
+		},
+		"A": &Sheets{
 			Price:   price + 3000,
 			Total:   150,
-				Remains: 150,
-			},
-			"B": &Sheets{
+			Remains: 150,
+		},
+		"B": &Sheets{
 			Price:   price + 1000,
 			Total:   300,
-				Remains: 300,
-			},
-			"C": &Sheets{
+			Remains: 300,
+		},
+		"C": &Sheets{
 			Price:   price,
 			Total:   500,
-				Remains: 500,
-			},
-		}
+			Remains: 500,
+		},
+	}
 
 	var i int64
 	for i = 1; i <= 1000; i++ {
 		sheet := getSheet(i)
 		s[sheet.Rank].Detail = append(s[sheet.Rank].Detail, sheet)
-			}
+	}
 	return s
-		}
+}
 func getSheet(id int64) *Sheet {
 	if id <= 50 {
 		return &Sheet{
 			ID:   id,
 			Rank: "S",
 			Num:  id,
-	}
+		}
 	} else if id <= 200 {
 		return &Sheet{
 			ID:   id,
 			Rank: "A",
 			Num:  id - 50,
-}
+		}
 	} else if id <= 500 {
 		return &Sheet{
 			ID:   id,
@@ -356,7 +356,7 @@ func getSheetByNumAndRank(num int64, rank string) *Sheet {
 		sheet.Num = num
 	}
 	return sheet
-	}
+}
 
 func fillsEvent(event *Event, loginUserID int64) (*Event, error) {
 	event.Sheets = getSheets(event.Price)
@@ -377,9 +377,9 @@ func fillsEvent(event *Event, loginUserID int64) (*Event, error) {
 		event.Sheets[sheet.Rank].Remains--
 		event.Remains--
 
-			sheet.Mine = reservation.UserID == loginUserID
-			sheet.Reserved = true
-			sheet.ReservedAtUnix = reservation.ReservedAt.Unix()
+		sheet.Mine = reservation.UserID == loginUserID
+		sheet.Reserved = true
+		sheet.ReservedAtUnix = reservation.ReservedAt.Unix()
 		event.Sheets[sheet.Rank].Detail[sheet.Num-1] = sheet
 	}
 
@@ -827,8 +827,8 @@ func cancelReservation() func(c echo.Context) error {
 
 		i, err := strconv.Atoi(num)
 		if err != nil {
-				return resError(c, "invalid_sheet", 404)
-			}
+			return resError(c, "invalid_sheet", 404)
+		}
 		if rank == "S" && i > 50 {
 			return resError(c, "invalid_sheet", 404)
 		} else if rank == "A" && i > 150 {
