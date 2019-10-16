@@ -452,6 +452,11 @@ func m(action string, handler echo.HandlerFunc) echo.HandlerFunc {
 		start := time.Now()
 
 		err := handler(c)
+		if err != nil {
+			c.Echo().Logger.Error(err)
+			return err
+		}
+
 		status := strconv.Itoa(res.Status)
 		elapsed := time.Since(start).Seconds()
 		bytesOut := float64(res.Size)
