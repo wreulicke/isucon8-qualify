@@ -533,7 +533,7 @@ func applyPprof(e *echo.Echo) {
 
 func reportSales() func(c echo.Context) error {
 	return func(c echo.Context) error {
-		rows, err := db.Query("select r.*, s.rank as sheet_rank, s.num as sheet_num, s.price as sheet_price, e.id as event_id, e.price as event_price from reservations r inner join sheets s on s.id = r.sheet_id inner join events e on e.id = r.event_id order by reserved_at asc for update")
+		rows, err := db.Query("select r.*, e.id as event_id, e.price as event_price from reservations r inner join events e on e.id = r.event_id order by reserved_at asc for update")
 		if err != nil {
 			return err
 		}
@@ -542,11 +542,12 @@ func reportSales() func(c echo.Context) error {
 		var reports []Report
 		for rows.Next() {
 			var reservation Reservation
-			var sheet Sheet
 			var event Event
-			if err := rows.Scan(&reservation.ID, &reservation.EventID, &reservation.SheetID, &reservation.UserID, &reservation.ReservedAt, &reservation.CanceledAt, &sheet.Rank, &sheet.Num, &sheet.Price, &event.ID, &event.Price); err != nil {
+			if err := rows.Scan(&reservation.ID, &reservation.EventID, &reservation.SheetID, &reservation.UserID, &reservation.ReservedAt, &reservation.CanceledAt, &event.ID, &event.Price); err != nil {
 				return err
 			}
+
+			sheet := getSheet(reservation.SheetID)
 			report := Report{
 				ReservationID: reservation.ID,
 				EventID:       event.ID,
