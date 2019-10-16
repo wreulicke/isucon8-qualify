@@ -216,15 +216,48 @@ func getEvents(all bool) ([]*Event, error) {
 	}
 
 	}
-	for i, v := range events {
-		event, err := getEvent(v.ID, -1)
+	for _, v := range events {
+		v.Total = 1000
+		v.Remains = 1000
+
+		rows, err := db.Query("SELECT count(*), sheets.`rank` FROM reservations " +
+			"INNER JOIN sheets on reservations.sheet_id = sheets.id WHERE reservations.event_id = ? AND reservations.canceled_at IS NULL group by sheets.rank;", v.ID)
 		if err != nil {
 			return nil, err
 		}
-		for k := range event.Sheets {
-			event.Sheets[k].Detail = nil
+		defer rows.Close()
+
+		v.Sheets = map[string]*Sheets{
+			"S": &Sheets{
+				Price: v.Price + 5000,
+				Total: 50,
+				Remains: 50,
+			},
+			"A": &Sheets{
+				Price: v.Price + 3000,
+				Total: 150,
+				Remains: 150,
+			},
+			"B": &Sheets{
+				Price: v.Price + 1000,
+				Total: 300,
+				Remains: 300,
+			},
+			"C": &Sheets{
+				Price: v.Price,
+				Total: 500,
+				Remains: 500,
+			},
 		}
-		events[i] = event
+		for rows.Next() {
+			var reservedCount int
+			var rank string
+			if err := rows.Scan(&reservedCount, &rank); err != nil {
+				return nil, err
+			}
+			v.Remains = v.Remains - reservedCount
+			v.Sheets[rank].Remains = v.Sheets[rank].Remains - reservedCount
+		}
 	}
 	return events, nil
 }
