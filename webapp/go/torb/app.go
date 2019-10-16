@@ -904,11 +904,7 @@ func reserve() func(c echo.Context) error {
 				return resError(c, "invalid_event", 404)
 			}
 			return err
-		}
-		event, err := fillsEvent(eventById, user.ID)
-		if err != nil {
-			return err
-		} else if !event.PublicFg {
+		} else if !eventById.PublicFg {
 			return resError(c, "invalid_event", 404)
 		}
 
