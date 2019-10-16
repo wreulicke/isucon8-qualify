@@ -915,19 +915,20 @@ func reserve() func(c echo.Context) error {
 		var sheet Sheet
 		var reservationID int64
 		for {
-			if err := db.QueryRow("SELECT * FROM sheets WHERE id NOT IN (SELECT sheet_id FROM reservations WHERE event_id = ? AND canceled_at IS NULL FOR UPDATE) AND `rank` = ? ORDER BY RAND() LIMIT 1", event.ID, params.Rank).Scan(&sheet.ID, &sheet.Rank, &sheet.Num, &sheet.Price); err != nil {
+			tx, err := db.Begin()
+			if err != nil {
+				return err
+			}
+
+			if err := tx.QueryRow("SELECT * FROM sheets WHERE id NOT IN (SELECT sheet_id FROM reservations WHERE event_id = ? AND canceled_at IS NULL FOR UPDATE) AND `rank` = ? ORDER BY RAND() LIMIT 1", eventById.ID, params.Rank).Scan(&sheet.ID, &sheet.Rank, &sheet.Num, &sheet.Price); err != nil {
+				tx.Rollback()
 				if err == sql.ErrNoRows {
 					return resError(c, "sold_out", 409)
 				}
 				return err
 			}
 
-			tx, err := db.Begin()
-			if err != nil {
-				return err
-			}
-
-			res, err := tx.Exec("INSERT INTO reservations (event_id, sheet_id, user_id, reserved_at) VALUES (?, ?, ?, ?)", event.ID, sheet.ID, user.ID, time.Now().UTC().Format("2006-01-02 15:04:05.000000"))
+			res, err := tx.Exec("INSERT INTO reservations (event_id, sheet_id, user_id, reserved_at) VALUES (?, ?, ?, ?)", eventById.ID, sheet.ID, user.ID, time.Now().UTC().Format("2006-01-02 15:04:05.000000"))
 			if err != nil {
 				tx.Rollback()
 				log.Println("re-try: rollback by", err)
