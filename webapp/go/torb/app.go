@@ -230,17 +230,21 @@ func getEvents(all bool) ([]*Event, error) {
 		}
 
 	}
+	fillsRemains(events)
+	return events, nil
+}
 
+func fillsRemains(events []*Event) error {
 	ids := []interface{}{}
 	for _, v := range events {
 		ids = append(ids, &v.ID)
 	}
 
 	r := map[int64]map[string]int{}
-	rows, err = db.Query("SELECT count(*), reservations.event_id, sheets.`rank` FROM reservations "+
+	rows, err := db.Query("SELECT count(*), reservations.event_id, sheets.`rank` FROM reservations "+
 		"INNER JOIN sheets on reservations.sheet_id = sheets.id WHERE reservations.event_id in (?"+strings.Repeat(",?", len(ids)-1)+") AND reservations.canceled_at IS NULL group by reservations.event_id, sheets.rank;", ids...)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer rows.Close()
 
@@ -249,7 +253,7 @@ func getEvents(all bool) ([]*Event, error) {
 		var rank string
 		var eventId int64
 		if err := rows.Scan(&reservedCount, &eventId, &rank); err != nil {
-			return nil, err
+			return err
 		}
 		if _, ok := r[eventId]; !ok {
 			r[eventId] = map[string]int{}
@@ -258,6 +262,7 @@ func getEvents(all bool) ([]*Event, error) {
 			r[eventId][rank] = reservedCount
 		}
 	}
+
 	for _, v := range events {
 		v.Total = 1000
 		v.Remains = 1000
@@ -268,7 +273,7 @@ func getEvents(all bool) ([]*Event, error) {
 			v.Sheets[rank].Remains = v.Sheets[rank].Remains - counts
 		}
 	}
-	return events, nil
+	return nil
 }
 
 func getEventById(eventID int64) (*Event, error) {
