@@ -313,30 +313,30 @@ func getSheets(price int64) map[string]*Sheets {
 func getSheet(id int64) *Sheet {
 	if id <= 50 {
 		return &Sheet{
-			ID:   id,
-			Rank: "S",
-			Num:  id,
+			ID:    id,
+			Rank:  "S",
+			Num:   id,
 			Price: 5000,
 		}
 	} else if id <= 200 {
 		return &Sheet{
-			ID:   id,
-			Rank: "A",
-			Num:  id - 50,
+			ID:    id,
+			Rank:  "A",
+			Num:   id - 50,
 			Price: 3000,
 		}
 	} else if id <= 500 {
 		return &Sheet{
-			ID:   id,
-			Rank: "B",
-			Num:  id - 200,
+			ID:    id,
+			Rank:  "B",
+			Num:   id - 200,
 			Price: 1000,
 		}
 	} else {
 		return &Sheet{
-			ID:   id,
-			Rank: "C",
-			Num:  id - 500,
+			ID:    id,
+			Rank:  "C",
+			Num:   id - 500,
 			Price: 0,
 		}
 	}
