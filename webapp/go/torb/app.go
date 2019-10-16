@@ -1092,7 +1092,8 @@ func getUser() func(c echo.Context) error {
 			return err
 		}
 
-		rows, err = db.Query("SELECT event_id FROM reservations WHERE user_id = ? GROUP BY event_id ORDER BY MAX(IFNULL(canceled_at, reserved_at)) DESC LIMIT 5", user.ID)
+		rows, err = db.Query("SELECT events.* FROM (SELECT event_id FROM reservations WHERE user_id = ? GROUP BY event_id ORDER BY MAX(IFNULL(canceled_at, reserved_at)) DESC LIMIT 5) AS event_ids "+
+			"INNER JOIN events ON events.id = event_ids.event_id", user.ID)
 		if err != nil {
 			return err
 		}
@@ -1100,23 +1101,14 @@ func getUser() func(c echo.Context) error {
 
 		var recentEvents []*Event
 		for rows.Next() {
-			var eventID int64
-			if err := rows.Scan(&eventID); err != nil {
+			var event Event
+			if err := rows.Scan(&event.ID, &event.Title, &event.PublicFg, &event.ClosedFg, &event.Price); err != nil {
 				return err
 			}
-			eventById, err := getEventById(eventID)
-			if err != nil {
-				return err
-			}
-			event, err := fillsEvent(eventById, -1)
-			if err != nil {
-				return err
-			}
-			for k := range event.Sheets {
-				event.Sheets[k].Detail = nil
-			}
-			recentEvents = append(recentEvents, event)
+			recentEvents = append(recentEvents, &event)
 		}
+
+		fillsRemains(recentEvents)
 		if recentEvents == nil {
 			recentEvents = make([]*Event, 0)
 		}
