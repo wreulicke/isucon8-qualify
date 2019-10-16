@@ -1169,12 +1169,13 @@ func createUser() func(c echo.Context) error {
 
 func initialize() func(c echo.Context) error {
 	return func(c echo.Context) error {
-		cmd := exec.Command("../../db/init.sh")
+		// windowsで動かしてるので。
+		cmd := exec.Command("bash", "-c", "../../db/init.sh")
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
 		err := cmd.Run()
 		if err != nil {
-			return nil
+			return err
 		}
 
 		return c.NoContent(204)
